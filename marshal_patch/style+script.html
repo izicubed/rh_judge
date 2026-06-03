@@ -79,6 +79,10 @@
 #judge-laps-table tr.selected td:first-child::after {
 	content: '\25C6'; color: #00d4ff;
 }
+
+/* Upper auto-laps table — row highlight when a green marker is clicked */
+#laps tbody tr.judge-marker-selected td { background: rgba(74,222,128,.10); }
+#laps tbody tr.judge-marker-selected td:first-child { box-shadow: inset 3px 0 0 0 #4ade80; }
 #judge-laps-table td .judge-icon-btn {
 	background: transparent; border: none;
 	color: #475569; cursor: pointer;
@@ -258,42 +262,69 @@ $(document).ready(function () {
 
 		canvas._bars = [];
 
-		// Vertical marker bars
-		var DOT_R = 4.5;
+		// Vertical marker bars — match the legend chip exactly (r=4 outer + r=1.6 punch)
+		var DOT_R    = 4;
+		var DOT_HOLE = 1.6;
+		var SEL_COLOR = '#fbbf24';   // yellow when selected
 		var barTop = PAD.top + 4;
 		var barBot = PAD.top + cH - 2;
 
-		function drawMarker(ev, color, dataObj) {
+		// Build bars list first (used to rebind selection identity)
+		var pendingDraws = [];
+		function recordBar(ev, color, dataObj) {
 			var x = xPos(ev.ts);
-			// Hollow ring at the top
-			ctx.strokeStyle = color;
-			ctx.fillStyle   = T.surface;
-			ctx.lineWidth   = 1.75;
-			ctx.beginPath();
-			ctx.arc(x, barTop + DOT_R, DOT_R, 0, 2 * Math.PI);
-			ctx.fill();   // surface fill = punched-through look
-			ctx.stroke();
-			// Dashed vertical line below
-			ctx.strokeStyle = color;
-			ctx.lineWidth = 1.25;
-			ctx.setLineDash([3, 3]);
-			ctx.beginPath();
-			ctx.moveTo(x, barTop + DOT_R * 2 + 1);
-			ctx.lineTo(x, barBot);
-			ctx.stroke();
-			ctx.setLineDash([]);
-
-			canvas._bars.push({
+			var bar = {
 				x: x, y: barTop + DOT_R,
 				x1: x - 7, y1: barTop, x2: x + 7, y2: barBot,
 				label: ev.type, lapN: ev.lapN, ts: ev.ts, lt: ev.lt,
-				id: dataObj ? dataObj.id : null
-			});
+				id: dataObj ? dataObj.id : null,
+				color: color
+			};
+			canvas._bars.push(bar);
+			pendingDraws.push(bar);
+		}
+		autoEvents .forEach(function(ev){ recordBar(ev, T.success, ev.src); });
+		judgeEvents.forEach(function(ev){ recordBar(ev, T.accent,  ev.src); });
+
+		// Rebind _pinnedBar to the matching fresh bar (so the highlight survives a redraw)
+		if (canvas._pinnedBar) {
+			var p = canvas._pinnedBar;
+			var match = null;
+			for (var k = 0; k < canvas._bars.length; k++) {
+				var b = canvas._bars[k];
+				if (b.label === p.label && b.lapN === p.lapN && b.ts === p.ts) { match = b; break; }
+			}
+			canvas._pinnedBar = match; // null if it no longer exists
+		}
+
+		function drawMarker(bar) {
+			var isSel = bar === canvas._pinnedBar;
+			var col   = isSel ? SEL_COLOR : bar.color;
+			// Outer disc in color
+			ctx.fillStyle = col;
+			ctx.beginPath();
+			ctx.arc(bar.x, barTop + DOT_R, DOT_R, 0, 2 * Math.PI);
+			ctx.fill();
+			// Center punch — surface color makes it look like a ring
+			ctx.fillStyle = T.surface;
+			ctx.beginPath();
+			ctx.arc(bar.x, barTop + DOT_R, DOT_HOLE, 0, 2 * Math.PI);
+			ctx.fill();
+			// Dashed vertical line below
+			ctx.strokeStyle = col;
+			ctx.lineWidth = isSel ? 1.6 : 1.25;
+			ctx.setLineDash([3, 3]);
+			ctx.beginPath();
+			ctx.moveTo(bar.x, barTop + DOT_R * 2 + 1);
+			ctx.lineTo(bar.x, barBot);
+			ctx.stroke();
+			ctx.setLineDash([]);
 		}
 
 		// Draw Auto (green) first, Judge (blue) on top — Judge tends to be the manually-verified value
-		autoEvents .forEach(function(ev){ drawMarker(ev, T.success, ev.src); });
-		judgeEvents.forEach(function(ev){ drawMarker(ev, T.accent,  ev.src); });
+		pendingDraws.forEach(drawMarker);
+		// Selected marker drawn last so its yellow halo overlaps neighbors cleanly
+		if (canvas._pinnedBar) drawMarker(canvas._pinnedBar);
 
 		// Bottom timeline axis
 		var axisY = PAD.top + cH;
@@ -349,27 +380,9 @@ $(document).ready(function () {
 	}
 
 	function setupMarkersHover(canvas) {
-		if (canvas._hoverInit) {
-			// Pinned tooltip needs to reposition after a redraw (data/resize change).
-			// Rebind to the matching bar in the fresh _bars array (object identity changed).
-			if (canvas._pinnedBar && canvas._bars) {
-				var p = canvas._pinnedBar;
-				var match = null;
-				for (var k = 0; k < canvas._bars.length; k++) {
-					var b = canvas._bars[k];
-					if (b.label === p.label && b.lapN === p.lapN && b.ts === p.ts) { match = b; break; }
-				}
-				if (match) {
-					canvas._pinnedBar = match;
-					if (canvas._renderTooltipForBar) canvas._renderTooltipForBar(match, true);
-				} else {
-					canvas._pinnedBar = null;
-					var tt = document.getElementById('judge-markers-tooltip');
-					if (tt) { tt.classList.remove('pinned'); tt.style.display = 'none'; }
-				}
-			}
-			return;
-		}
+		// Selection state for the chart is rebound inline in drawMarkersChart;
+		// the hover/click handlers only need to be attached once.
+		if (canvas._hoverInit) return;
 		canvas._hoverInit  = true;
 		canvas._pinnedBar  = null;
 		var tooltip   = document.getElementById('judge-markers-tooltip');
@@ -474,12 +487,7 @@ $(document).ready(function () {
 				crosshair.style.display = 'none';
 			}
 
-			// If a marker is pinned, leave the tooltip fixed — but still update the crosshair.
-			if (canvas._pinnedBar) {
-				canvas.style.cursor = findHit(mx, my) ? 'pointer' : 'default';
-				return;
-			}
-
+			// Hover tooltip works the same whether or not a marker is selected
 			var hit = findHit(mx, my);
 			if (hit) {
 				renderMarkersTooltipForBar(hit, false);
@@ -497,30 +505,38 @@ $(document).ready(function () {
 			var my = e.clientY - rect.top;
 			var hit = findHit(mx, my);
 
+			// Always hide the hover tooltip on click — selection is shown by yellow recolouring + row highlight
+			tooltip.classList.remove('pinned');
+			tooltip.style.display = 'none';
+
 			if (hit) {
-				// Same marker clicked → unpin; else pin to new marker
+				// Same marker clicked → unselect; else select new one
 				if (canvas._pinnedBar &&
 					canvas._pinnedBar.x === hit.x &&
 					canvas._pinnedBar.label === hit.label) {
 					canvas._pinnedBar = null;
-					tooltip.classList.remove('pinned');
-					tooltip.style.display = 'none';
 					clearJudgeRowSelection();
+					clearAutoRowSelection();
 				} else {
 					canvas._pinnedBar = hit;
-					renderMarkersTooltipForBar(hit, true);
 					if (hit.label === 'Judge' && hit.id != null) {
 						highlightJudgeRowOnly(hit.id);
+						clearAutoRowSelection();
 					} else if (hit.label === 'Auto') {
-						clickAutoLapRow(hit.lapN);
+						highlightAutoRowOnly(hit.lapN);
+						clearJudgeRowSelection();
 					}
 				}
 			} else if (canvas._pinnedBar) {
-				// Click in empty area unpins
+				// Click on empty area → clear selection
 				canvas._pinnedBar = null;
-				tooltip.classList.remove('pinned');
-				tooltip.style.display = 'none';
 				clearJudgeRowSelection();
+				clearAutoRowSelection();
+			}
+
+			// Redraw so the selected marker turns yellow
+			if (canvas._lastData) {
+				drawMarkersChart(canvas._lastData.autoLaps, canvas._lastData.judgeLaps);
 			}
 		});
 
@@ -536,23 +552,31 @@ $(document).ready(function () {
 				if (Number(r.dataset.lapId) === lapId) r.classList.add('selected');
 			});
 		}
-		// Trigger the existing upper-table row click so the standard
-		// RotorHazard "marked lap" indicator + graph selection updates.
-		function clickAutoLapRow(lapN) {
+		function clearAutoRowSelection() {
+			document.querySelectorAll('#laps tbody tr.judge-marker-selected').forEach(function(r){
+				r.classList.remove('judge-marker-selected');
+			});
+		}
+		// Visually highlight the matching row in the upper auto-laps table.
+		// IMPORTANT: do NOT trigger any RotorHazard click handlers here — the
+		// first <button> in each #laps row toggles delete, which we must avoid.
+		function highlightAutoRowOnly(lapN) {
+			clearAutoRowSelection();
 			var $row = jQuery('#laps tbody tr').eq(lapN);
 			if ($row.length) {
-				var $btn = $row.find('button').first();
-				if ($btn.length) $btn.trigger('click');
-				else $row.trigger('click');
+				$row.addClass('judge-marker-selected');
+				// Scroll the row into view if it's offscreen
+				var el = $row[0];
+				if (el && el.scrollIntoView) {
+					el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+				}
 			}
 		}
 
 		canvas.addEventListener('mouseleave', function() {
 			crosshair.style.display = 'none';
 			canvas.style.cursor = '';
-			if (!canvas._pinnedBar) {
-				tooltip.style.display = 'none';
-			}
+			tooltip.style.display = 'none';
 		});
 	}
 
@@ -767,16 +791,19 @@ $(document).ready(function () {
 		});
 		var newRow = null;
 		rows.forEach(function(r){ if (Number(r.dataset.lapId) === lapId) newRow = r; });
-		// Click same row again → deselect & unpin marker
 		var canvas = document.getElementById('judge-markers-chart');
+
+		// Click same row again → deselect + unhighlight marker
 		if (was && was === newRow) {
-			if (canvas && canvas._pinnedBar) {
+			if (canvas) {
 				canvas._pinnedBar = null;
-				var tt = document.getElementById('judge-markers-tooltip');
-				if (tt) { tt.classList.remove('pinned'); tt.style.display = 'none'; }
+				if (canvas._lastData) {
+					drawMarkersChart(canvas._lastData.autoLaps, canvas._lastData.judgeLaps);
+				}
 			}
 			return;
 		}
+
 		if (newRow) newRow.classList.add('selected');
 		if (pinMarker && canvas && canvas._bars) {
 			var bar = null;
@@ -786,12 +813,12 @@ $(document).ready(function () {
 			}
 			if (bar) {
 				canvas._pinnedBar = bar;
-				if (canvas._renderTooltipForBar) canvas._renderTooltipForBar(bar, true);
+				if (canvas._lastData) {
+					drawMarkersChart(canvas._lastData.autoLaps, canvas._lastData.judgeLaps);
+				}
 			}
 		}
 	}
-	// Expose for marker hover handler to call
-	window.__judgeSelectRow = selectJudgeRow;
 
 	var addBtn = document.getElementById('judge-add-btn');
 	if (addBtn) addBtn.addEventListener('click', submitManualLap);
