@@ -13,7 +13,7 @@ import sqlite3
 import time
 import uuid
 
-from flask import Blueprint, jsonify, render_template, request, send_file
+from flask import Blueprint, jsonify, make_response, render_template, request, send_file
 from eventmanager import Evt
 
 logger = logging.getLogger(__name__)
@@ -215,9 +215,16 @@ class JudgePlugin:
         def judge_page(node_num):
             if not 1 <= node_num <= MAX_NODES:
                 return 'Node number must be 1–8', 404
-            return render_template('judge_run.html',
+            html = render_template('judge_run.html',
                                    node_num=node_num,
                                    node_index=node_num - 1)
+            resp = make_response(html)
+            # Plugin code changes regularly — keep browsers from serving stale HTML
+            # that would emit socket calls with the wrong payload shape.
+            resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            resp.headers['Pragma']        = 'no-cache'
+            resp.headers['Expires']       = '0'
+            return resp
 
         # ── Race / session status ─────────────────────────────────────
         @bp.route('/judge/api/status')
