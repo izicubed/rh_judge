@@ -1,3 +1,14 @@
+{% set node_palette = {
+    1: {'accent': '#f87171', 'rgb': '248,113,113', 'hover': '#ff9090'},
+    2: {'accent': '#fbbf24', 'rgb': '251,191,36',  'hover': '#ffd054'},
+    3: {'accent': '#4ade80', 'rgb': '74,222,128',  'hover': '#6be59a'},
+    4: {'accent': '#00d4ff', 'rgb': '0,212,255',   'hover': '#22deff'},
+    5: {'accent': '#a78bfa', 'rgb': '167,139,250', 'hover': '#bfa6ff'},
+    6: {'accent': '#fb923c', 'rgb': '251,146,60',  'hover': '#fda85c'},
+    7: {'accent': '#f472b6', 'rgb': '244,114,182', 'hover': '#ff8ec5'},
+    8: {'accent': '#22d3ee', 'rgb': '34,211,238',  'hover': '#5be0f3'},
+} %}
+{% set c = node_palette.get(node_num, node_palette[4]) %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13,9 +24,11 @@
     --surface:     #12151b;
     --surface-2:   #1a1e27;
     --border:      rgba(255,255,255,0.07);
-    --accent:      #00d4ff;
-    --accent-dim:  rgba(0,212,255,0.12);
-    --accent-glow: rgba(0,212,255,0.25);
+    --accent:      {{ c.accent }};
+    --accent-dim:  rgba({{ c.rgb }},0.12);
+    --accent-glow: rgba({{ c.rgb }},0.25);
+    --accent-hover:{{ c.hover }};
+    --accent-border:rgba({{ c.rgb }},0.3);
     --success:     #4ade80;
     --success-dim: rgba(74,222,128,0.12);
     --danger:      #f87171;
@@ -62,7 +75,7 @@
   .node-badge {
     background: var(--accent-dim);
     color: var(--accent);
-    border: 1px solid rgba(0,212,255,0.3);
+    border: 1px solid var(--accent-border);
     border-radius: 999px;
     padding: 0.2rem 0.7rem;
     font-size: 0.8rem;
@@ -130,7 +143,7 @@
   }
   .status-ready    { background: var(--surface-2); color: var(--text-3); border-color: var(--border); }
   .status-staging  { background: var(--warn-dim);  color: var(--warn);   border-color: rgba(251,191,36,0.3); }
-  .status-racing   { background: var(--accent-dim);color: var(--accent); border-color: rgba(0,212,255,0.3); }
+  .status-racing   { background: var(--accent-dim);color: var(--accent); border-color: var(--accent-border); }
   .status-racing::before { animation: pulse 1s infinite; }
   .status-done     { background: var(--success-dim);color: var(--success);border-color: rgba(74,222,128,0.3); }
 
@@ -163,7 +176,7 @@
     user-select: none;
   }
   .add-lap-btn:hover:not(:disabled) {
-    background: #22deff;
+    background: var(--accent-hover);
     box-shadow: 0 6px 32px var(--accent-glow);
   }
   .add-lap-btn:active:not(:disabled) {
@@ -362,7 +375,7 @@
     cursor: pointer;
     transition: background 0.15s;
   }
-  .btn-primary:hover { background: #22deff; }
+  .btn-primary:hover { background: var(--accent-hover); }
 
   /* ── Locked (after Save & Clear on /run) ── */
   body.locked .add-lap-btn,
