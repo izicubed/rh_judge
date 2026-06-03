@@ -1,0 +1,62 @@
+<!-- Judge Plugin: manual lap comparison panel -->
+<div id="judge-panel" class="panel" style="display:none">
+	<div class="panel-header">
+		<h2><button class="no-style">&#9670; Judge Manual Laps &mdash; <span id="judge-node-label"></span></button></h2>
+	</div>
+	<div class="panel-content">
+		<p style="font-size:.85em; color:var(--color-text-secondary,#888); margin-bottom:.75rem">
+			Manual judge crossings for this race. Green markers are automatic timing, blue markers are manual judge entries. Click a marker to highlight its row in the table; click a row to highlight the marker.
+		</p>
+
+		<!-- Crossings Timeline at the top — always visible when panel is shown -->
+		<h3 style="font-size:.85em; text-transform:uppercase; letter-spacing:.06em; margin:0 0 .4rem; opacity:.7">
+			Crossings Timeline
+		</h3>
+		<div id="judge-markers-wrap">
+			<canvas id="judge-markers-chart"></canvas>
+			<div id="judge-markers-crosshair"></div>
+			<div id="judge-markers-tooltip"></div>
+		</div>
+
+		<!-- All judge laps -->
+		<h3 style="font-size:.85em; text-transform:uppercase; letter-spacing:.06em; margin:1rem 0 .4rem; opacity:.7">
+			All Judge Laps
+		</h3>
+		<table id="judge-laps-table">
+			<thead>
+				<tr>
+					<th style="width:1.5rem"></th>
+					<th>{{ __('Lap') }}</th>
+					<th>{{ __('Timestamp') }}</th>
+					<th>{{ __('Lap Time') }}</th>
+					<th style="width:5rem; text-align:right"></th>
+				</tr>
+			</thead>
+			<tbody id="judge-laps-body"></tbody>
+		</table>
+		<p id="judge-laps-empty" style="font-size:.85em; color:var(--color-text-secondary,#888); margin-top:.5rem; display:none">
+			No manual judge laps for this race yet.
+		</p>
+
+		<!-- Manual add — compact row -->
+		<div id="judge-add-row">
+			<input id="judge-add-time" type="number" step="0.001" min="0" placeholder="Seconds from start (e.g. 23.456)" inputmode="decimal">
+			<button id="judge-add-btn" type="button">+ Add Lap</button>
+			<span id="judge-add-status"></span>
+		</div>
+	</div>
+</div>
+
+<!-- Edit modal for an existing judge lap -->
+<div id="judge-edit-modal">
+	<div class="modal-card">
+		<h3>Edit Judge Lap Timestamp</h3>
+		<label for="judge-edit-input">Seconds from race start</label>
+		<input id="judge-edit-input" type="number" step="0.001" min="0" inputmode="decimal">
+		<div class="modal-actions">
+			<button class="btn-cancel" id="judge-edit-cancel" type="button">Cancel</button>
+			<button class="btn-save"   id="judge-edit-save"   type="button">Save</button>
+		</div>
+	</div>
+</div>
+

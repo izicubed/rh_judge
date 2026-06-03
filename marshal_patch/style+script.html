@@ -1,0 +1,805 @@
+<style>
+#judge-chart-wrap, #judge-gantt-wrap, #judge-markers-wrap { position:relative; margin-bottom:1rem; border-radius:10px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,.35); }
+#judge-compare-chart { display:block; width:100%; height:200px; background:#14142a; }
+#judge-gantt-wrap, #judge-markers-wrap { background:#12151b; border:1px solid rgba(255,255,255,0.07); }
+#judge-gantt-chart, #judge-markers-chart { display:block; width:100%; background:#12151b; }
+#judge-chart-tooltip, #judge-gantt-tooltip, #judge-markers-tooltip {
+	position:absolute; pointer-events:none; display:none;
+	background:rgba(30,30,55,.96);
+	backdrop-filter:blur(6px);
+	border:1px solid rgba(120,120,180,.35); border-radius:6px;
+	padding:8px 12px; font-size:11px; line-height:1.55; color:#e8e8ff;
+	white-space:nowrap; z-index:10;
+	box-shadow:0 6px 24px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.05) inset;
+	transform:translate(-50%, calc(-100% - 14px));
+}
+#judge-chart-tooltip strong, #judge-gantt-tooltip strong, #judge-markers-tooltip strong { color:#fff; font-weight:600; }
+
+/* Markers chart: manual positioning (with clamping) — no transform */
+#judge-markers-tooltip { transform: none; }
+#judge-markers-tooltip.pinned {
+	border-color: rgba(251,191,36,0.55);
+	box-shadow: 0 6px 24px rgba(0,0,0,.55), 0 0 0 1px rgba(251,191,36,0.15) inset;
+}
+#judge-markers-tooltip .pin-hint {
+	display:block; margin-top:4px;
+	font-size:9px; letter-spacing:.12em; text-transform:uppercase;
+	color:#fbbf24; opacity:.85;
+}
+#judge-markers-crosshair {
+	position:absolute; top:0; width:1px;
+	background:#fbbf24; pointer-events:none; display:none; z-index:5;
+	box-shadow:0 0 6px rgba(251,191,36,.55);
+}
+#judge-compare-section { margin-bottom:1.5rem; }
+#judge-compare-section h3, #judge-laps-section h3 { font-size:.85em; text-transform:uppercase; letter-spacing:.06em; margin:0 0 .5rem; opacity:.7; }
+.judge-high-dev td { background:rgba(255,68,68,.13) !important; }
+.judge-dev { text-align:right; }
+.judge-dev-high { color:#ff6666; font-weight:bold; }
+
+/* Add Manual Lap — compact inline row */
+#judge-add-row {
+	display: flex; gap: .5rem; align-items: center; flex-wrap: wrap;
+	margin-top: .75rem; padding: .5rem 0;
+}
+#judge-add-row.locked { opacity: .55; pointer-events: none; }
+#judge-add-time {
+	flex: 1 1 200px; min-width: 160px;
+	padding: .45rem .7rem;
+	background: #0a0c10;
+	border: 1px solid rgba(255,255,255,0.07);
+	border-radius: 6px;
+	color: #e2e8f0;
+	font-family: "SF Mono", "Fira Code", Consolas, monospace;
+	font-size: .9rem; outline: none;
+	transition: border-color 0.15s;
+}
+#judge-add-time:focus { border-color: #00d4ff; }
+#judge-add-btn {
+	padding: .45rem .9rem;
+	background: #00d4ff; color: #0a0c10;
+	border: none; border-radius: 6px;
+	font-weight: 700; letter-spacing: .04em;
+	cursor: pointer; font-size: .85rem; white-space: nowrap;
+	transition: background 0.15s, transform 0.1s;
+}
+#judge-add-btn:hover:not(:disabled) { background: #22deff; }
+#judge-add-btn:active:not(:disabled) { transform: scale(0.97); }
+#judge-add-btn:disabled { background: #1a1e27; color: #475569; cursor: not-allowed; }
+#judge-add-status {
+	font-size: .8rem; font-family: "SF Mono", Consolas, monospace;
+	flex: 1 1 100%; min-height: 1em;
+}
+.judge-add-success { color: #4ade80; }
+.judge-add-error   { color: #f87171; }
+
+/* Judge laps table — selection, edit, delete */
+#judge-laps-table tr { cursor: pointer; transition: background .12s; }
+#judge-laps-table tr.selected td { background: rgba(0,212,255,.08); }
+#judge-laps-table tr.selected td:first-child::after {
+	content: '\25C6'; color: #00d4ff;
+}
+#judge-laps-table td .judge-icon-btn {
+	background: transparent; border: none;
+	color: #475569; cursor: pointer;
+	padding: .2rem .35rem; border-radius: 4px;
+	font-size: 1rem; line-height: 1;
+	transition: background .12s, color .12s;
+}
+#judge-laps-table td .judge-icon-btn:hover { background: #1a1e27; }
+#judge-laps-table td .judge-icon-btn.edit:hover   { color: #00d4ff; }
+#judge-laps-table td .judge-icon-btn.delete:hover { color: #f87171; background: rgba(248,113,113,.12); }
+#judge-laps-table td.judge-actions { text-align: right; white-space: nowrap; }
+#judge-panel.locked #judge-laps-table td.judge-actions { display: none; }
+
+/* Modal for editing a judge lap (Marshal) */
+#judge-edit-modal {
+	position: fixed; inset: 0; background: rgba(0,0,0,.7);
+	display: none; align-items: center; justify-content: center;
+	z-index: 200; padding: 1rem;
+}
+#judge-edit-modal.show { display: flex; }
+#judge-edit-modal .modal-card {
+	background: #12151b; border: 1px solid rgba(255,255,255,.07);
+	border-radius: 10px; padding: 1.25rem 1.5rem;
+	width: 100%; max-width: 360px;
+	box-shadow: 0 24px 64px rgba(0,0,0,.6);
+}
+#judge-edit-modal h3 { margin: 0 0 .8rem; font-size: 1rem; color: #e2e8f0; }
+#judge-edit-modal label {
+	display: block; font-size: .75rem; color: #94a3b8; margin-bottom: .35rem;
+}
+#judge-edit-modal input {
+	width: 100%; padding: .55rem .8rem;
+	background: #1a1e27; border: 1px solid rgba(255,255,255,.07);
+	border-radius: 6px; color: #e2e8f0;
+	font-family: "SF Mono", Consolas, monospace; font-size: 1rem;
+	outline: none; transition: border-color .15s;
+}
+#judge-edit-modal input:focus { border-color: #00d4ff; }
+#judge-edit-modal .modal-actions {
+	display: flex; gap: .6rem; justify-content: flex-end; margin-top: 1rem;
+}
+#judge-edit-modal .btn-cancel, #judge-edit-modal .btn-save {
+	padding: .55rem 1rem; border: none; border-radius: 6px;
+	font-weight: 700; cursor: pointer; font-size: .85rem;
+}
+#judge-edit-modal .btn-cancel { background: #1a1e27; color: #94a3b8; }
+#judge-edit-modal .btn-cancel:hover { background: #222530; }
+#judge-edit-modal .btn-save { background: #00d4ff; color: #0a0c10; }
+#judge-edit-modal .btn-save:hover { background: #22deff; }
+</style>
+<script type="text/javascript">
+/* ── Judge Plugin: manual lap comparison ────────────────────────── */
+/* NOTE: must be inside $(document).ready() — socket is initialised  */
+/* inside rotorhazard.js's own ready-handler (socket = false before) */
+$(document).ready(function () {
+
+	function fmtMs(ms) {
+		var t   = Math.max(0, Math.floor(ms));
+		var m   = Math.floor(t / 60000);
+		var s   = Math.floor((t % 60000) / 1000);
+		var mil = t % 1000;
+		var ss  = String(s).padStart(m > 0 ? 2 : 1, '0');
+		return (m > 0 ? m + ':' : '') + ss + '.' + String(mil).padStart(3, '0');
+	}
+
+	function niceTickStep(rangeSec, targetTicks) {
+		if (rangeSec <= 0) return 1;
+		var rough = rangeSec / targetTicks;
+		var pow = Math.pow(10, Math.floor(Math.log10(rough)));
+		var n = rough / pow;
+		var nice = n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10;
+		return Math.max(1, nice * pow);
+	}
+
+
+	function drawMarkersChart(autoLaps, judgeLaps) {
+		var canvas = document.getElementById('judge-markers-chart');
+		if (!canvas || !canvas.getContext) return;
+		canvas._lastData = { autoLaps: autoLaps, judgeLaps: judgeLaps };
+
+		var ctx = canvas.getContext('2d');
+		var dpr  = window.devicePixelRatio || 1;
+		var cssW = canvas.clientWidth;
+		if (!cssW) return;
+
+		// Design tokens (matching /run/1)
+		var T = {
+			surface:  '#12151b',
+			border:   'rgba(255,255,255,0.07)',
+			accent:   '#00d4ff',   // Judge — blue
+			success:  '#4ade80',   // Auto  — green
+			text2:    '#94a3b8',
+			text3:    '#475569'
+		};
+		var FONT_MONO = '"SF Mono", "Fira Code", Consolas, monospace';
+		var FONT_SANS = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
+		var cssH = 110;
+		canvas.width  = Math.round(cssW * dpr);
+		canvas.height = Math.round(cssH * dpr);
+		canvas.style.height = cssH + 'px';
+		ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+		var W = cssW, H = cssH;
+		var PAD = { top: 36, right: 28, bottom: 36, left: 28 };
+		var cW = W - PAD.left - PAD.right;
+		var cH = H - PAD.top  - PAD.bottom;
+
+		ctx.fillStyle = T.surface;
+		ctx.fillRect(0, 0, W, H);
+
+		// Collect both kinds of crossings with their lap index
+		var autoEvents = [];
+		autoLaps.forEach(function(l, i){
+			if (l && l.lap_time_stamp > 0) {
+				autoEvents.push({ ts: l.lap_time_stamp, lt: l.lap_time, lapN: i, type: 'Auto', src: l });
+			}
+		});
+		var judgeEvents = [];
+		judgeLaps.forEach(function(l, i){
+			if (l && l.lap_time_stamp > 0) {
+				judgeEvents.push({ ts: l.lap_time_stamp, lt: l.lap_time, lapN: i, type: 'Judge', src: l });
+			}
+		});
+		if (!autoEvents.length && !judgeEvents.length) return;
+
+		var allTs = autoEvents.map(function(e){return e.ts;}).concat(judgeEvents.map(function(e){return e.ts;}));
+		var maxT = Math.max.apply(null, allTs);
+		if (maxT < 1) maxT = 1;
+		var minT = 0;
+		var span = maxT - minT;
+		minT -= span * 0.01;
+		maxT += span * 0.02;
+
+		function xPos(t) { return PAD.left + (t - minT) / (maxT - minT) * cW; }
+
+		// Header label (top-left, like /run/1 small labels)
+		ctx.fillStyle = T.text3;
+		ctx.font = '700 9px ' + FONT_SANS;
+		ctx.textAlign = 'left';
+		ctx.fillText('CROSSINGS TIMELINE', PAD.left, 16);
+
+		// Legend chips at top-right
+		var rightX = PAD.left + cW;
+		function chip(text, color, x) {
+			ctx.fillStyle = color;
+			ctx.beginPath(); ctx.arc(x + 4, 13, 4, 0, 2*Math.PI); ctx.fill();
+			ctx.fillStyle = T.surface;
+			ctx.beginPath(); ctx.arc(x + 4, 13, 1.6, 0, 2*Math.PI); ctx.fill();
+			ctx.fillStyle = T.text2;
+			ctx.font = '700 9px ' + FONT_SANS;
+			ctx.textAlign = 'left';
+			ctx.fillText(text, x + 12, 16);
+		}
+		chip('JUDGE', T.accent,  rightX - 60);
+		chip('AUTO',  T.success, rightX - 130);
+
+		// Header separator
+		ctx.strokeStyle = T.border;
+		ctx.lineWidth = 1;
+		ctx.beginPath();
+		ctx.moveTo(0, PAD.top - 12);
+		ctx.lineTo(W, PAD.top - 12);
+		ctx.stroke();
+
+		// Vertical grid aligned with axis ticks
+		var rangeSec = (maxT - minT) / 1000;
+		var stepSec  = niceTickStep(rangeSec, 10);
+		ctx.strokeStyle = T.border;
+		for (var gts = 0; gts <= maxT; gts += stepSec * 1000) {
+			var gx = xPos(gts);
+			ctx.beginPath();
+			ctx.moveTo(gx, PAD.top - 6);
+			ctx.lineTo(gx, PAD.top + cH);
+			ctx.stroke();
+		}
+
+		canvas._bars = [];
+
+		// Vertical marker bars
+		var DOT_R = 4.5;
+		var barTop = PAD.top + 4;
+		var barBot = PAD.top + cH - 2;
+
+		function drawMarker(ev, color, dataObj) {
+			var x = xPos(ev.ts);
+			// Hollow ring at the top
+			ctx.strokeStyle = color;
+			ctx.fillStyle   = T.surface;
+			ctx.lineWidth   = 1.75;
+			ctx.beginPath();
+			ctx.arc(x, barTop + DOT_R, DOT_R, 0, 2 * Math.PI);
+			ctx.fill();   // surface fill = punched-through look
+			ctx.stroke();
+			// Dashed vertical line below
+			ctx.strokeStyle = color;
+			ctx.lineWidth = 1.25;
+			ctx.setLineDash([3, 3]);
+			ctx.beginPath();
+			ctx.moveTo(x, barTop + DOT_R * 2 + 1);
+			ctx.lineTo(x, barBot);
+			ctx.stroke();
+			ctx.setLineDash([]);
+
+			canvas._bars.push({
+				x: x, y: barTop + DOT_R,
+				x1: x - 7, y1: barTop, x2: x + 7, y2: barBot,
+				label: ev.type, lapN: ev.lapN, ts: ev.ts, lt: ev.lt,
+				id: dataObj ? dataObj.id : null
+			});
+		}
+
+		// Draw Auto (green) first, Judge (blue) on top — Judge tends to be the manually-verified value
+		autoEvents .forEach(function(ev){ drawMarker(ev, T.success, ev.src); });
+		judgeEvents.forEach(function(ev){ drawMarker(ev, T.accent,  ev.src); });
+
+		// Bottom timeline axis
+		var axisY = PAD.top + cH;
+		ctx.strokeStyle = T.border;
+		ctx.lineWidth = 1;
+		ctx.beginPath();
+		ctx.moveTo(0, axisY);
+		ctx.lineTo(W, axisY);
+		ctx.stroke();
+
+		// Minor-tick scale row (5 subdivisions per major step) — fine ruler
+		var minorStep = stepSec / 5;
+		ctx.strokeStyle = T.border;
+		ctx.lineWidth = 1;
+		for (var mts = 0; mts <= maxT; mts += minorStep * 1000) {
+			var mxx = xPos(mts);
+			ctx.beginPath();
+			ctx.moveTo(mxx, axisY);
+			ctx.lineTo(mxx, axisY + 3);
+			ctx.stroke();
+		}
+
+		// Major ticks + labels
+		ctx.textAlign = 'center';
+		ctx.font = '10px ' + FONT_MONO;
+		for (var tts = 0; tts <= maxT; tts += stepSec * 1000) {
+			var tx = xPos(tts);
+			ctx.strokeStyle = T.text3;
+			ctx.lineWidth = 1.25;
+			ctx.beginPath();
+			ctx.moveTo(tx, axisY);
+			ctx.lineTo(tx, axisY + 7);
+			ctx.stroke();
+			ctx.fillStyle = T.text3;
+			ctx.fillText((tts / 1000).toFixed(stepSec < 1 ? 1 : 0) + 's', tx, axisY + 19);
+		}
+
+		// Tiny axis label
+		ctx.textAlign = 'right';
+		ctx.font = '700 9px ' + FONT_SANS;
+		ctx.fillStyle = T.text3;
+		ctx.fillText('TIME →', W - PAD.right + 18, axisY + 30);
+
+		// Store data-area bounds for the hover/crosshair handler
+		canvas._area = {
+			top: PAD.top - 6,
+			bottom: PAD.top + cH,
+			left: PAD.left - 4,
+			right: PAD.left + cW + 4
+		};
+
+		setupMarkersHover(canvas);
+	}
+
+	function setupMarkersHover(canvas) {
+		if (canvas._hoverInit) {
+			// Pinned tooltip needs to reposition after a redraw (data/resize change).
+			// Rebind to the matching bar in the fresh _bars array (object identity changed).
+			if (canvas._pinnedBar && canvas._bars) {
+				var p = canvas._pinnedBar;
+				var match = null;
+				for (var k = 0; k < canvas._bars.length; k++) {
+					var b = canvas._bars[k];
+					if (b.label === p.label && b.lapN === p.lapN && b.ts === p.ts) { match = b; break; }
+				}
+				if (match) {
+					canvas._pinnedBar = match;
+					if (canvas._renderTooltipForBar) canvas._renderTooltipForBar(match, true);
+				} else {
+					canvas._pinnedBar = null;
+					var tt = document.getElementById('judge-markers-tooltip');
+					if (tt) { tt.classList.remove('pinned'); tt.style.display = 'none'; }
+				}
+			}
+			return;
+		}
+		canvas._hoverInit  = true;
+		canvas._pinnedBar  = null;
+		var tooltip   = document.getElementById('judge-markers-tooltip');
+		var crosshair = document.getElementById('judge-markers-crosshair');
+		var wrap      = document.getElementById('judge-markers-wrap');
+
+		if (typeof ResizeObserver !== 'undefined') {
+			var rt = null;
+			var ro = new ResizeObserver(function() {
+				clearTimeout(rt);
+				rt = setTimeout(function() {
+					if (canvas._lastData) {
+						drawMarkersChart(canvas._lastData.autoLaps, canvas._lastData.judgeLaps);
+					}
+				}, 80);
+			});
+			ro.observe(canvas);
+		}
+
+		function fmtTs(ms) {
+			var sec = ms / 1000;
+			var m = Math.floor(sec / 60);
+			var s = (sec - m * 60).toFixed(3);
+			return (m > 0 ? m + 'm ' : '') + s + 's';
+		}
+
+		function buildTooltipHTML(hit, pinned) {
+			var color = hit.label === 'Auto' ? '#4ade80' : '#00d4ff';
+			var html =
+				'<span style="color:' + color + '">●</span> <strong>' + hit.label + '</strong>' +
+				' &mdash; Lap #' + hit.lapN + '<br>' +
+				'Time: <strong>' + fmtTs(hit.ts) + '</strong>';
+			if (hit.lt > 0 && hit.lapN > 0) {
+				html += '<br>Lap time: ' + (hit.lt / 1000).toFixed(3) + ' s';
+			}
+			if (pinned) html += '<span class="pin-hint">Click again to unpin</span>';
+			return html;
+		}
+
+		// Position tooltip with clamping inside the wrap.
+		// anchorX/anchorY are the desired tip anchor in wrap-local coords.
+		function placeTooltip(anchorX, anchorY) {
+			var wW = wrap.clientWidth;
+			var wH = wrap.clientHeight;
+			var tw = tooltip.offsetWidth;
+			var th = tooltip.offsetHeight;
+			var GAP = 14, MARGIN = 6;
+
+			var left = anchorX - tw / 2;
+			var top  = anchorY - th - GAP;
+
+			// Flip below if no room above
+			if (top < MARGIN) {
+				top = anchorY + GAP;
+				// If even below doesn't fit, clamp inside
+				if (top + th > wH - MARGIN) top = Math.max(MARGIN, wH - th - MARGIN);
+			}
+
+			// Clamp horizontally
+			left = Math.max(MARGIN, Math.min(wW - tw - MARGIN, left));
+			tooltip.style.left = left + 'px';
+			tooltip.style.top  = top  + 'px';
+		}
+
+		// Renders the tooltip content + position for a given bar.
+		// (Exposed via canvas so a redraw can call it for the pinned bar.)
+		function renderMarkersTooltipForBar(hit, pinned) {
+			tooltip.innerHTML = buildTooltipHTML(hit, pinned);
+			if (pinned) tooltip.classList.add('pinned');
+			else        tooltip.classList.remove('pinned');
+			tooltip.style.display = 'block';
+			// Force a layout pass so offsetWidth/offsetHeight are current
+			placeTooltip(hit.x, hit.y);
+		}
+		canvas._renderTooltipForBar = renderMarkersTooltipForBar;
+
+		function findHit(mx, my) {
+			var hit = null, bestDx = Infinity;
+			for (var i = 0; i < canvas._bars.length; i++) {
+				var b = canvas._bars[i];
+				if (my < b.y1 - 4 || my > b.y2 + 4) continue;
+				var dx = Math.abs(mx - b.x);
+				if (dx <= 8 && dx < bestDx) { hit = b; bestDx = dx; }
+			}
+			return hit;
+		}
+
+		canvas.addEventListener('mousemove', function(e) {
+			if (!canvas._bars) return;
+			var rect = canvas.getBoundingClientRect();
+			var mx = e.clientX - rect.left;
+			var my = e.clientY - rect.top;
+			var area = canvas._area;
+
+			// Yellow vertical cursor line — only within data area
+			if (area && mx >= area.left && mx <= area.right) {
+				crosshair.style.top    = area.top + 'px';
+				crosshair.style.height = (area.bottom - area.top) + 'px';
+				crosshair.style.left   = mx + 'px';
+				crosshair.style.display = 'block';
+			} else {
+				crosshair.style.display = 'none';
+			}
+
+			// If a marker is pinned, leave the tooltip fixed — but still update the crosshair.
+			if (canvas._pinnedBar) {
+				canvas.style.cursor = findHit(mx, my) ? 'pointer' : 'default';
+				return;
+			}
+
+			var hit = findHit(mx, my);
+			if (hit) {
+				renderMarkersTooltipForBar(hit, false);
+				canvas.style.cursor = 'pointer';
+			} else {
+				tooltip.style.display = 'none';
+				canvas.style.cursor = '';
+			}
+		});
+
+		canvas.addEventListener('click', function(e) {
+			if (!canvas._bars) return;
+			var rect = canvas.getBoundingClientRect();
+			var mx = e.clientX - rect.left;
+			var my = e.clientY - rect.top;
+			var hit = findHit(mx, my);
+
+			if (hit) {
+				// Same marker clicked → unpin; else pin to new marker
+				if (canvas._pinnedBar &&
+					canvas._pinnedBar.x === hit.x &&
+					canvas._pinnedBar.label === hit.label) {
+					canvas._pinnedBar = null;
+					tooltip.classList.remove('pinned');
+					tooltip.style.display = 'none';
+					clearJudgeRowSelection();
+				} else {
+					canvas._pinnedBar = hit;
+					renderMarkersTooltipForBar(hit, true);
+					if (hit.label === 'Judge' && hit.id != null) {
+						highlightJudgeRowOnly(hit.id);
+					} else if (hit.label === 'Auto') {
+						clickAutoLapRow(hit.lapN);
+					}
+				}
+			} else if (canvas._pinnedBar) {
+				// Click in empty area unpins
+				canvas._pinnedBar = null;
+				tooltip.classList.remove('pinned');
+				tooltip.style.display = 'none';
+				clearJudgeRowSelection();
+			}
+		});
+
+		// ── Helpers that bridge marker click → table row state ──
+		function clearJudgeRowSelection() {
+			document.querySelectorAll('#judge-laps-body tr.selected').forEach(function(r){
+				r.classList.remove('selected');
+			});
+		}
+		function highlightJudgeRowOnly(lapId) {
+			clearJudgeRowSelection();
+			document.querySelectorAll('#judge-laps-body tr').forEach(function(r){
+				if (Number(r.dataset.lapId) === lapId) r.classList.add('selected');
+			});
+		}
+		// Trigger the existing upper-table row click so the standard
+		// RotorHazard "marked lap" indicator + graph selection updates.
+		function clickAutoLapRow(lapN) {
+			var $row = jQuery('#laps tbody tr').eq(lapN);
+			if ($row.length) {
+				var $btn = $row.find('button').first();
+				if ($btn.length) $btn.trigger('click');
+				else $row.trigger('click');
+			}
+		}
+
+		canvas.addEventListener('mouseleave', function() {
+			crosshair.style.display = 'none';
+			canvas.style.cursor = '';
+			if (!canvas._pinnedBar) {
+				tooltip.style.display = 'none';
+			}
+		});
+	}
+
+	function renderJudgeLaps(laps, nodeIndex) {
+		var tbody = document.getElementById('judge-laps-body');
+		var table = document.getElementById('judge-laps-table');
+		var empty = document.getElementById('judge-laps-empty');
+		tbody.innerHTML = '';
+
+		if (!laps || !laps.length) {
+			table.style.display = 'none';
+			empty.style.display = '';
+			return;
+		}
+		table.style.display = '';
+		empty.style.display = 'none';
+
+		laps.forEach(function (lap, idx) {
+			var tr = document.createElement('tr');
+			tr.dataset.lapId = lap.id;
+			tr.dataset.lapN  = idx;
+			tr.innerHTML =
+				'<td></td>' +
+				'<td>' + idx + '</td>' +
+				'<td>' + (lap.lap_time_stamp / 1000).toFixed(3) + '</td>' +
+				'<td>' + (idx === 0 ? '&mdash;' : fmtMs(lap.lap_time)) + '</td>' +
+				'<td class="judge-actions">' +
+					'<button class="judge-icon-btn edit"   title="Edit"   data-action="edit">&#9998;</button>' +
+					'<button class="judge-icon-btn delete" title="Delete" data-action="delete">&times;</button>' +
+				'</td>';
+			tbody.appendChild(tr);
+		});
+	}
+
+	// Last-known context for the manual add form
+	var judgeCurrent = { raceId: null, nodeIndex: null, autoLaps: [], judgeLaps: [] };
+
+	function setAddStatus(msg, cls) {
+		var el = document.getElementById('judge-add-status');
+		if (!el) return;
+		el.textContent = msg || '';
+		el.className   = cls || '';
+	}
+
+	function refreshJudgeAll(raceId, nodeIndex, autoLaps) {
+		return fetch('/judge/api/marshal/' + raceId)
+			.then(function (r) { return r.json(); })
+			.then(function (data) {
+				var judgeLaps = data[String(nodeIndex)] || [];
+				judgeCurrent.judgeLaps = judgeLaps;
+				renderJudgeLaps(judgeLaps, nodeIndex);
+				// Crossings Timeline always renders when panel is shown
+				drawMarkersChart(autoLaps, judgeLaps);
+			});
+	}
+
+	socket.on('race_details', function (msg) {
+		var sec = document.getElementById('judge-panel');
+		if (!sec) return;
+		if (!current_race_data || current_race_data.race_id == null || current_race_data.node_index == null) {
+			sec.style.display = 'none';
+			return;
+		}
+		var raceId    = current_race_data.race_id;
+		var nodeIndex = current_race_data.node_index;
+		var autoLaps  = (msg && msg.laps) ? msg.laps.filter(function(l){return !l.deleted;}) : [];
+
+		judgeCurrent.raceId    = raceId;
+		judgeCurrent.nodeIndex = nodeIndex;
+		judgeCurrent.autoLaps  = autoLaps;
+
+		document.getElementById('judge-node-label').textContent = 'Node ' + (nodeIndex + 1);
+		sec.style.display = '';
+		setAddStatus('', '');
+
+		refreshJudgeAll(raceId, nodeIndex, autoLaps).catch(function (err) {
+			if (window.console) console.warn('judge: refresh failed', err);
+		});
+	});
+
+	// ── Manual add lap (Marshal-side) ──────────────────────────────
+	function submitManualLap() {
+		var ctx = judgeCurrent;
+		if (ctx.raceId == null || ctx.nodeIndex == null) {
+			setAddStatus('Select a race and pilot first.', 'judge-add-error');
+			return;
+		}
+		var inp = document.getElementById('judge-add-time');
+		var sec = parseFloat(inp.value);
+		if (isNaN(sec) || sec < 0) {
+			setAddStatus('Enter a non-negative number of seconds.', 'judge-add-error');
+			inp.focus();
+			return;
+		}
+		var ms  = sec * 1000;
+		var btn = document.getElementById('judge-add-btn');
+		btn.disabled = true;
+		setAddStatus('Adding…', '');
+
+		fetch('/judge/api/marshal/' + ctx.raceId + '/' + ctx.nodeIndex, {
+			method:  'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body:    JSON.stringify({ lap_time_stamp: ms }),
+		})
+			.then(function (r) {
+				return r.text().then(function(text) { return { ok: r.ok, status: r.status, text: text }; });
+			})
+			.then(function (res) {
+				if (!res.ok) {
+					var detail = '';
+					try { var j = JSON.parse(res.text); detail = j.error || j.message || res.text; }
+					catch (e) { detail = res.text; }
+					throw new Error('Server returned ' + res.status + (detail ? ': ' + detail : ''));
+				}
+				inp.value = '';
+				setAddStatus('Added lap at ' + sec.toFixed(3) + ' s', 'judge-add-success');
+				return refreshJudgeAll(ctx.raceId, ctx.nodeIndex, ctx.autoLaps);
+			})
+			.catch(function (err) {
+				setAddStatus('Failed to add lap: ' + (err.message || err), 'judge-add-error');
+				if (window.console) console.error('judge add lap failed', err);
+			})
+			.then(function () { btn.disabled = false; });
+	}
+
+	// ── Delete a judge lap ────────────────────────────────────────
+	function deleteJudgeLap(lapId) {
+		fetch('/judge/api/laps/entry/' + lapId, { method: 'DELETE' })
+			.then(function (r) {
+				if (!r.ok) throw new Error('HTTP ' + r.status);
+				var ctx = judgeCurrent;
+				return refreshJudgeAll(ctx.raceId, ctx.nodeIndex, ctx.autoLaps);
+			})
+			.catch(function (err) {
+				setAddStatus('Delete failed: ' + (err.message || err), 'judge-add-error');
+			});
+	}
+
+	// ── Open the edit modal for a lap ─────────────────────────────
+	var editingLapId = null;
+	function openJudgeEdit(lap) {
+		editingLapId = lap.id;
+		var inp = document.getElementById('judge-edit-input');
+		inp.value = (lap.lap_time_stamp / 1000).toFixed(3);
+		document.getElementById('judge-edit-modal').classList.add('show');
+		setTimeout(function() { inp.focus(); inp.select(); }, 30);
+	}
+	function closeJudgeEdit() {
+		document.getElementById('judge-edit-modal').classList.remove('show');
+		editingLapId = null;
+	}
+	function saveJudgeEdit() {
+		if (editingLapId == null) return;
+		var newTs = parseFloat(document.getElementById('judge-edit-input').value) * 1000;
+		if (isNaN(newTs) || newTs < 0) return;
+		fetch('/judge/api/laps/entry/' + editingLapId, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ lap_time_stamp: newTs }),
+		})
+			.then(function (r) {
+				if (!r.ok) throw new Error('HTTP ' + r.status);
+				var ctx = judgeCurrent;
+				closeJudgeEdit();
+				return refreshJudgeAll(ctx.raceId, ctx.nodeIndex, ctx.autoLaps);
+			})
+			.catch(function (err) {
+				setAddStatus('Edit failed: ' + (err.message || err), 'judge-add-error');
+			});
+	}
+
+	// Modal wiring
+	document.getElementById('judge-edit-cancel').addEventListener('click', closeJudgeEdit);
+	document.getElementById('judge-edit-save')  .addEventListener('click', saveJudgeEdit);
+	document.getElementById('judge-edit-modal') .addEventListener('click', function (e) {
+		if (e.target === this) closeJudgeEdit();
+	});
+	document.getElementById('judge-edit-input') .addEventListener('keydown', function (e) {
+		if (e.key === 'Enter')  { e.preventDefault(); saveJudgeEdit(); }
+		if (e.key === 'Escape') { e.preventDefault(); closeJudgeEdit(); }
+	});
+
+	// ── Row click → highlight + pin matching judge marker ─────────
+	document.getElementById('judge-laps-body').addEventListener('click', function (e) {
+		var row = e.target.closest('tr');
+		if (!row) return;
+		var action = e.target.dataset && e.target.dataset.action;
+		var lapId  = Number(row.dataset.lapId);
+		var lap    = (judgeCurrent.judgeLaps || []).find(function(l){return l.id === lapId;});
+		if (!lap) return;
+
+		if (action === 'edit') {
+			e.stopPropagation();
+			openJudgeEdit(lap);
+			return;
+		}
+		if (action === 'delete') {
+			e.stopPropagation();
+			if (confirm('Delete this judge lap?')) deleteJudgeLap(lapId);
+			return;
+		}
+		// Row click — toggle selection + sync marker
+		selectJudgeRow(lapId, true);
+	});
+
+	function selectJudgeRow(lapId, pinMarker) {
+		var rows = document.querySelectorAll('#judge-laps-body tr');
+		var was = null;
+		rows.forEach(function(r){
+			if (r.classList.contains('selected')) was = r;
+			r.classList.remove('selected');
+		});
+		var newRow = null;
+		rows.forEach(function(r){ if (Number(r.dataset.lapId) === lapId) newRow = r; });
+		// Click same row again → deselect & unpin marker
+		var canvas = document.getElementById('judge-markers-chart');
+		if (was && was === newRow) {
+			if (canvas && canvas._pinnedBar) {
+				canvas._pinnedBar = null;
+				var tt = document.getElementById('judge-markers-tooltip');
+				if (tt) { tt.classList.remove('pinned'); tt.style.display = 'none'; }
+			}
+			return;
+		}
+		if (newRow) newRow.classList.add('selected');
+		if (pinMarker && canvas && canvas._bars) {
+			var bar = null;
+			for (var i = 0; i < canvas._bars.length; i++) {
+				var b = canvas._bars[i];
+				if (b.label === 'Judge' && b.id === lapId) { bar = b; break; }
+			}
+			if (bar) {
+				canvas._pinnedBar = bar;
+				if (canvas._renderTooltipForBar) canvas._renderTooltipForBar(bar, true);
+			}
+		}
+	}
+	// Expose for marker hover handler to call
+	window.__judgeSelectRow = selectJudgeRow;
+
+	var addBtn = document.getElementById('judge-add-btn');
+	if (addBtn) addBtn.addEventListener('click', submitManualLap);
+
+	var addInp = document.getElementById('judge-add-time');
+	if (addInp) addInp.addEventListener('keydown', function (e) {
+		if (e.key === 'Enter') { e.preventDefault(); submitManualLap(); }
+	});
+
+});
+</script>

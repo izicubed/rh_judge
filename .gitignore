@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.db
+*.db-journal
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
