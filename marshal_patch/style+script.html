@@ -80,9 +80,6 @@
 	content: '\25C6'; color: #00d4ff;
 }
 
-/* Upper auto-laps table — row highlight when a green marker is clicked */
-#laps tbody tr.judge-marker-selected td { background: rgba(74,222,128,.10); }
-#laps tbody tr.judge-marker-selected td:first-child { box-shadow: inset 3px 0 0 0 #4ade80; }
 #judge-laps-table td .judge-icon-btn {
 	background: transparent; border: none;
 	color: #475569; cursor: pointer;
@@ -510,37 +507,45 @@ $(document).ready(function () {
 			tooltip.style.display = 'none';
 
 			if (hit) {
-				// Same marker clicked → unselect; else select new one
-				if (canvas._pinnedBar &&
-					canvas._pinnedBar.x === hit.x &&
-					canvas._pinnedBar.label === hit.label) {
-					canvas._pinnedBar = null;
+				if (hit.label === 'Auto') {
+					// Defer all selection state to the standard #laps row toggle.
+					// MutationObserver below sees lap-highlighted change and updates _pinnedBar.
 					clearJudgeRowSelection();
-					clearAutoRowSelection();
-				} else {
-					canvas._pinnedBar = hit;
-					if (hit.label === 'Judge' && hit.id != null) {
-						highlightJudgeRowOnly(hit.id);
-						clearAutoRowSelection();
-					} else if (hit.label === 'Auto') {
-						highlightAutoRowOnly(hit.lapN);
+					triggerAutoRowClickByTs(hit.ts);
+				} else if (hit.label === 'Judge' && hit.id != null) {
+					// If an Auto row is currently highlighted, toggle it off first
+					if (canvas._pinnedBar && canvas._pinnedBar.label === 'Auto') {
+						triggerCurrentHighlightedRowToggle();
+					}
+					var same = canvas._pinnedBar &&
+						canvas._pinnedBar.label === 'Judge' &&
+						canvas._pinnedBar.id === hit.id;
+					if (same) {
+						canvas._pinnedBar = null;
 						clearJudgeRowSelection();
+					} else {
+						canvas._pinnedBar = hit;
+						highlightJudgeRowOnly(hit.id);
+					}
+					if (canvas._lastData) {
+						drawMarkersChart(canvas._lastData.autoLaps, canvas._lastData.judgeLaps);
 					}
 				}
 			} else if (canvas._pinnedBar) {
-				// Click on empty area → clear selection
-				canvas._pinnedBar = null;
-				clearJudgeRowSelection();
-				clearAutoRowSelection();
-			}
-
-			// Redraw so the selected marker turns yellow
-			if (canvas._lastData) {
-				drawMarkersChart(canvas._lastData.autoLaps, canvas._lastData.judgeLaps);
+				// Click empty area → clear current selection (auto = via row toggle, judge = directly)
+				if (canvas._pinnedBar.label === 'Auto') {
+					triggerCurrentHighlightedRowToggle();
+				} else {
+					canvas._pinnedBar = null;
+					clearJudgeRowSelection();
+					if (canvas._lastData) {
+						drawMarkersChart(canvas._lastData.autoLaps, canvas._lastData.judgeLaps);
+					}
+				}
 			}
 		});
 
-		// ── Helpers that bridge marker click → table row state ──
+		// ── Helpers that bridge marker click ↔ table row state ──
 		function clearJudgeRowSelection() {
 			document.querySelectorAll('#judge-laps-body tr.selected').forEach(function(r){
 				r.classList.remove('selected');
@@ -552,25 +557,48 @@ $(document).ready(function () {
 				if (Number(r.dataset.lapId) === lapId) r.classList.add('selected');
 			});
 		}
-		function clearAutoRowSelection() {
-			document.querySelectorAll('#laps tbody tr.judge-marker-selected').forEach(function(r){
-				r.classList.remove('judge-marker-selected');
-			});
+		// Trigger the standard upper-table click handler for the row matching a timestamp.
+		// Click is dispatched on the FIRST <td> so it hits the existing
+		// `#laps td:not(:last-child)` handler — never on the last <td> which holds the delete button.
+		function triggerAutoRowClickByTs(ts) {
+			var $row = jQuery('#laps tbody tr').filter(function() {
+				return Math.abs(jQuery(this).data('lapTimeStamp') - ts) < 0.5;
+			}).first();
+			if ($row.length) $row.find('td:not(:last-child)').first().trigger('click');
 		}
-		// Visually highlight the matching row in the upper auto-laps table.
-		// IMPORTANT: do NOT trigger any RotorHazard click handlers here — the
-		// first <button> in each #laps row toggles delete, which we must avoid.
-		function highlightAutoRowOnly(lapN) {
-			clearAutoRowSelection();
-			var $row = jQuery('#laps tbody tr').eq(lapN);
-			if ($row.length) {
-				$row.addClass('judge-marker-selected');
-				// Scroll the row into view if it's offscreen
-				var el = $row[0];
-				if (el && el.scrollIntoView) {
-					el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+		function triggerCurrentHighlightedRowToggle() {
+			var $row = jQuery('#laps tbody tr.lap-highlighted').first();
+			if ($row.length) $row.find('td:not(:last-child)').first().trigger('click');
+		}
+
+		// ── MutationObserver: sync upper #laps highlight ↔ canvas._pinnedBar ──
+		function syncFromAutoTable() {
+			if (!canvas._bars) return;
+			var $hi = jQuery('#laps tbody tr.lap-highlighted').first();
+			if ($hi.length) {
+				var ts = parseFloat($hi.data('lapTimeStamp'));
+				var bar = null;
+				for (var i = 0; i < canvas._bars.length; i++) {
+					if (canvas._bars[i].label === 'Auto' && Math.abs(canvas._bars[i].ts - ts) < 0.5) {
+						bar = canvas._bars[i]; break;
+					}
 				}
+				if (bar && canvas._pinnedBar !== bar) {
+					canvas._pinnedBar = bar;
+					clearJudgeRowSelection();
+					if (canvas._lastData) drawMarkersChart(canvas._lastData.autoLaps, canvas._lastData.judgeLaps);
+				}
+			} else if (canvas._pinnedBar && canvas._pinnedBar.label === 'Auto') {
+				canvas._pinnedBar = null;
+				if (canvas._lastData) drawMarkersChart(canvas._lastData.autoLaps, canvas._lastData.judgeLaps);
 			}
+		}
+		var lapsTbody = document.querySelector('#laps tbody');
+		if (lapsTbody && window.MutationObserver) {
+			new MutationObserver(syncFromAutoTable).observe(lapsTbody, {
+				childList: true, subtree: true,
+				attributes: true, attributeFilter: ['class']
+			});
 		}
 
 		canvas.addEventListener('mouseleave', function() {
@@ -613,6 +641,29 @@ $(document).ready(function () {
 
 	// Last-known context for the manual add form
 	var judgeCurrent = { raceId: null, nodeIndex: null, autoLaps: [], judgeLaps: [] };
+
+	// Hook the top-level displayLaps so auto-lap changes (delete toggle, recalc, etc.)
+	// flow into the Crossings Timeline without a page reload.
+	if (typeof window.displayLaps === 'function' && !window.displayLaps.__judgeWrapped) {
+		var __origDisplayLaps = window.displayLaps;
+		window.displayLaps = function (laps_obj, marked_lap) {
+			var ret = __origDisplayLaps.apply(this, arguments);
+			if (judgeCurrent.raceId != null && laps_obj) {
+				var newAuto = [];
+				for (var k in laps_obj) {
+					var l = laps_obj[k];
+					if (l && !l.deleted) newAuto.push(l);
+				}
+				judgeCurrent.autoLaps = newAuto;
+				var canvas = document.getElementById('judge-markers-chart');
+				if (canvas && canvas._lastData) {
+					drawMarkersChart(newAuto, judgeCurrent.judgeLaps || []);
+				}
+			}
+			return ret;
+		};
+		window.displayLaps.__judgeWrapped = true;
+	}
 
 	function setAddStatus(msg, cls) {
 		var el = document.getElementById('judge-add-status');
@@ -803,6 +854,10 @@ $(document).ready(function () {
 			}
 			return;
 		}
+
+		// Also un-highlight any upper auto-laps row, using the standard toggle
+		var $autoHi = jQuery('#laps tbody tr.lap-highlighted').first();
+		if ($autoHi.length) $autoHi.find('td:not(:last-child)').first().trigger('click');
 
 		if (newRow) newRow.classList.add('selected');
 		if (pinMarker && canvas && canvas._bars) {
