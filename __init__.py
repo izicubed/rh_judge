@@ -3,6 +3,13 @@ Judge Plugin — manual lap entry for judges.
 
 Judge pages: /run/1  /run/2  … /run/8  (one per node/receiver)
 Each page shows a race timer, an ADD LAP button, and a lap history table.
+
+Summary page: /run/all
+Shows one card per pilot in the current heat (a shared timer plus an
+ADD LAP button and lap history for each seat) so a single judge can mark
+laps for every pilot from one screen. Pressing the keyboard digit for a
+seat (1–8) adds a lap to that pilot.
+
 After a race is saved the laps appear on the Marshal page alongside the
 automatic timing data.
 '''
@@ -135,6 +142,16 @@ class JudgePlugin:
             pass
         return None
 
+    def _num_seats(self):
+        '''Number of available seats/nodes (clamped to MAX_NODES).'''
+        try:
+            n = len(self._rhapi._racecontext.interface.nodes)
+            if n > 0:
+                return min(n, MAX_NODES)
+        except Exception:
+            pass
+        return MAX_NODES
+
     def _db_stats(self):
         '''Return dict with total/saved/unsaved lap counts.'''
         try:
@@ -210,6 +227,16 @@ class JudgePlugin:
     def _register_routes(self, bp):
         plugin = self  # capture for closures
 
+        # ── Judge summary page (all pilots in heat) ───────────────────
+        @bp.route('/run/all')
+        def judge_page_all():
+            html = render_template('judge_run_all.html', max_nodes=MAX_NODES)
+            resp = make_response(html)
+            resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            resp.headers['Pragma']        = 'no-cache'
+            resp.headers['Expires']       = '0'
+            return resp
+
         # ── Judge page ────────────────────────────────────────────────
         @bp.route('/run/<int:node_num>')
         def judge_page(node_num):
@@ -241,6 +268,7 @@ class JudgePlugin:
                 'session_id':   plugin._session_id,
                 'locked':       plugin._session_locked,
                 'pilot_names':  pilot_names,
+                'num_seats':    plugin._num_seats(),
             })
 
         # ── Laps for current session ───────────────────────────────────

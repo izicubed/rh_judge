@@ -1,8 +1,7 @@
 {
     "name": "Judge",
-    "author": "izicubed",
-    "license": "MIT",
-    "description": "Manual lap entry by judges via per-node pages (/run/1 … /run/8). Shows judge laps on the Marshal page for comparison with automatic timing.",
+    "author": "RotorHazard",
+    "description": "Manual lap entry by judges via per-node pages (/run/1 … /run/8) and a combined heat page (/run/all) with keyboard shortcuts. Shows judge laps on the Marshal page for comparison with automatic timing.",
     "version": "1.0.0",
     "required_rhapi_version": "1.0"
 }
