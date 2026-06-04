@@ -1,14 +1,15 @@
 '''
 Judge Plugin — manual lap entry for judges.
 
-Judge pages: /run/1  /run/2  … /run/8  (one per node/receiver)
-Each page shows a race timer, an ADD LAP button, and a lap history table.
-
-Summary page: /run/all
+Summary page: /judge
 Shows one card per pilot in the current heat (a shared timer plus an
 ADD LAP button and lap history for each seat) so a single judge can mark
-laps for every pilot from one screen. Pressing the keyboard digit for a
-seat (1–8) adds a lap to that pilot.
+laps for every pilot from one screen, plus links to the per-node pages.
+Pressing the keyboard digit for a seat (1–8) adds a lap to that pilot.
+(Replaces the old /run/all, which now redirects here.)
+
+Per-node pages: /judge/1 … /judge/8  (also /run/1 … /run/8)
+Each page shows a race timer, an ADD LAP button, and a lap history table.
 
 After a race is saved the laps appear on the Marshal page alongside the
 automatic timing data.
@@ -20,7 +21,7 @@ import sqlite3
 import time
 import uuid
 
-from flask import Blueprint, jsonify, make_response, render_template, request, send_file
+from flask import Blueprint, jsonify, make_response, redirect, render_template, request, send_file
 from eventmanager import Evt
 
 logger = logging.getLogger(__name__)
@@ -227,31 +228,44 @@ class JudgePlugin:
     def _register_routes(self, bp):
         plugin = self  # capture for closures
 
-        # ── Judge summary page (all pilots in heat) ───────────────────
-        @bp.route('/run/all')
-        def judge_page_all():
-            html = render_template('judge_run_all.html', max_nodes=MAX_NODES)
+        # Plugin code changes regularly — keep browsers from serving stale HTML
+        # that would emit socket calls with the wrong payload shape.
+        def _nocache(html):
             resp = make_response(html)
             resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
             resp.headers['Pragma']        = 'no-cache'
             resp.headers['Expires']       = '0'
             return resp
 
-        # ── Judge page ────────────────────────────────────────────────
-        @bp.route('/run/<int:node_num>')
-        def judge_page(node_num):
+        def _render_all():
+            return _nocache(render_template('judge_run_all.html', max_nodes=MAX_NODES))
+
+        def _render_node(node_num):
             if not 1 <= node_num <= MAX_NODES:
                 return 'Node number must be 1–8', 404
-            html = render_template('judge_run.html',
-                                   node_num=node_num,
-                                   node_index=node_num - 1)
-            resp = make_response(html)
-            # Plugin code changes regularly — keep browsers from serving stale HTML
-            # that would emit socket calls with the wrong payload shape.
-            resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-            resp.headers['Pragma']        = 'no-cache'
-            resp.headers['Expires']       = '0'
-            return resp
+            return _nocache(render_template('judge_run.html',
+                                            node_num=node_num,
+                                            node_index=node_num - 1))
+
+        # ── Judge summary page (all pilots in heat) — /judge ──────────
+        @bp.route('/judge')
+        def judge_all():
+            return _render_all()
+
+        # ── Per-node judge pages — /judge/1 … /judge/8 ────────────────
+        @bp.route('/judge/<int:node_num>')
+        def judge_node(node_num):
+            return _render_node(node_num)
+
+        # ── Back-compat: the summary page moved from /run/all to /judge
+        @bp.route('/run/all')
+        def judge_page_all():
+            return redirect('/judge', code=302)
+
+        # ── Back-compat: per-node pages still available at /run/1 … /run/8
+        @bp.route('/run/<int:node_num>')
+        def judge_page(node_num):
+            return _render_node(node_num)
 
         # ── Race / session status ─────────────────────────────────────
         @bp.route('/judge/api/status')

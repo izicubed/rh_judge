@@ -71,7 +71,9 @@
     letter-spacing: 0.15em;
     text-transform: uppercase;
     color: var(--accent);
+    text-decoration: none;
   }
+  a.logo:hover { text-decoration: underline; }
   .node-badge {
     background: var(--accent-dim);
     color: var(--accent);
@@ -391,7 +393,7 @@
 
 <header>
   <div class="hdr-left">
-    <span class="logo">◈ Judge</span>
+    <a class="logo" href="/judge" title="All pilots">◈ Judge</a>
     <span class="node-badge">Node {{ node_num }}</span>
   </div>
   <span id="pilot-name" class="pilot-name">—</span>
