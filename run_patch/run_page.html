@@ -1,0 +1,26 @@
+<!--
+  Judge Run-page patch — two additions to core templates.
+
+  (1) src/server/templates/layout.html — add a "Judge" nav link right after Run:
+
+        <li class="admin-hide"><a href="/run">{{ __("Run") }}</a></li>
+        <li class="admin-hide"><a href="/judge">{{ __("Judge") }}</a></li>     <-- add this line
+        <li class="admin-hide"><a href="/marshal">{{ __("Marshal") }}</a></li>
+
+  (2) src/server/templates/run.html — under each node block, mirror the
+      manually-added judge laps. Inside the `{% for node in nodes %}` loop,
+      after the per-node current-laps table:
+
+        <table class="laps" id="current_laps_{{ node.index }}">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+
+        <!-- Judge plugin: laps added manually from the Judge page -->        <-- add
+        <div class="judge-laps-panel" id="judge-laps-{{ node.index }}" data-node="{{ node.index }}"></div>
+
+      ...and load the mirror script once anywhere in the run.html body
+      (e.g. near the top of the page-race main panel):
+
+        <script type="text/javascript" src="/judge/run_laps.js?{{ serverInfo['release_version'] | urlencode }}"></script>
+-->

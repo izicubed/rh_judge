@@ -6,6 +6,8 @@ The plugin adds:
 
 - a combined heat page at `/judge` showing one card per pilot in the current heat (shared timer, per-seat Add Lap + lap history), with keyboard shortcuts `1`–`8` to add a lap to the matching seat and links to each single page — so a single judge can mark laps for every pilot from one screen
 - per-node judge pages at `/judge/1` … `/judge/8` (also `/run/1` … `/run/8`) where a judge records laps with a single tap on the **Add Lap** button while the race is running
+- a **Judge** link in the top navigation (right of Run) that opens `/judge`
+- a per-pilot **Judge laps** mirror on the Run page: under each node block (channel / RSSI graph / callsign / auto laps) an amber panel lists the laps a judge entered from the `/judge` pages for the current session
 - a **Judge Manual Laps** panel on the Marshal page that visualises both automatic and manual crossings on a shared timeline
 - inline edit/delete and "add manual lap" controls on the Marshal page (Marshal-side manual entry attaches the lap directly to a saved race)
 - a Settings page panel for downloading or clearing the plugin's database
@@ -25,9 +27,16 @@ src/server/plugins/rh_judge/
     templates/
         judge_run.html
         judge_run_all.html
+    static/
+        run_laps.js
 ```
 
-Then apply the **Marshal page patch** (see `MARSHAL_PATCH.md`) so the comparison UI shows up.
+Then apply the patches to the core templates:
+
+- **Marshal page patch** (see `MARSHAL_PATCH.md`) for the comparison UI.
+- **Run page patch** (see `RUN_PATCH.md`) for the top-nav **Judge** link and the
+  per-pilot judge-laps mirror on the Run page.
+
 Restart the server.
 
 ### Option B — bundle into the source tree

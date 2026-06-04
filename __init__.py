@@ -267,6 +267,17 @@ class JudgePlugin:
         def judge_page(node_num):
             return _render_node(node_num)
 
+        # ── Run-page mirror script (injected into run.html) ───────────
+        @bp.route('/judge/run_laps.js')
+        def run_laps_js():
+            resp = make_response(send_file(
+                os.path.join(PLUGIN_DIR, 'static', 'run_laps.js'),
+                mimetype='application/javascript'))
+            resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            resp.headers['Pragma']  = 'no-cache'
+            resp.headers['Expires'] = '0'
+            return resp
+
         # ── Race / session status ─────────────────────────────────────
         @bp.route('/judge/api/status')
         def api_status():
